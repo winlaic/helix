@@ -1,3 +1,4 @@
+mod bufferline;
 mod completion;
 mod document;
 pub(crate) mod editor;
