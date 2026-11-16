@@ -69,5 +69,5 @@ tar @CommandArgs
 if ($LASTEXITCODE -ne 0) { throw "Package archive failed: $LASTEXITCODE." }
 $Hash = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 "$Hash  $PackageName.tar.xz" | Set-Content -LiteralPath "$ArchivePath.sha256"
-Remove-Item -LiteralPath $StagingPath -Recurse
+Remove-Item -LiteralPath $StagingPath -Recurse -Force
 Write-Host "[Release package] Completed: $ArchivePath; SHA256: $Hash"
