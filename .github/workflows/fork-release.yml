@@ -1,0 +1,99 @@
+name: Fork Release
+
+on:
+  push:
+    branches: [ci/releases]
+    paths:
+      - .github/workflows/fork-release.yml
+      - contrib/release/**
+  workflow_dispatch:
+
+concurrency:
+  group: fork-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      source: ${{ steps.plan.outputs.source }}
+      toolchain: ${{ steps.plan.outputs.toolchain }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        shell: pwsh
+        run: |
+          $Release = Get-Content contrib/release/release.json -Raw | ConvertFrom-Json
+          "tag=$($Release.tag)" >> $env:GITHUB_OUTPUT
+          "source=$($Release.source_commit)" >> $env:GITHUB_OUTPUT
+          "toolchain=$($Release.rust_toolchain)" >> $env:GITHUB_OUTPUT
+          $Matrix = @{ include = @($Release.builds) } | ConvertTo-Json -Depth 5 -Compress
+          "matrix=$Matrix" >> $env:GITHUB_OUTPUT
+
+  build:
+    needs: plan
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: automation
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.source }}
+          path: source
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88
+        with:
+          toolchain: ${{ needs.plan.outputs.toolchain }}
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+        with:
+          workspaces: source
+          shared-key: fork-release-${{ matrix.platform }}
+      - name: Build and package native release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          ./automation/contrib/release/build.ps1
+          -SourcePath ./source
+          -ManifestPath ./automation/contrib/release/release.json
+          -Platform '${{ matrix.platform }}'
+          -Repository '${{ github.repository }}'
+          -OutputPath ./dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, build]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: dist
+      - name: Verify and publish both platforms
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          ./contrib/release/publish.ps1
+          -ManifestPath ./contrib/release/release.json
+          -ArtifactPath ./dist
+          -Repository '${{ github.repository }}'

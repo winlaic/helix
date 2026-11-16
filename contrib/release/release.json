@@ -1,0 +1,19 @@
+{
+  "tag": "dev-2026-11-16",
+  "source_commit": "c155b3f9028ee6b1f4c5d278aa5dc36848a96bfe",
+  "rust_toolchain": "1.90.0",
+  "builds": [
+    {
+      "platform": "x86_64-linux",
+      "runner": "ubuntu-22.04",
+      "target": "x86_64-unknown-linux-gnu",
+      "binary_asset": "hx-linux-x86_64",
+      "binary_sha256": "02A0A30E05D562C3EEF8F3D1CD7C0599C1C55846781A04E8D3E1472B860882D0"
+    },
+    {
+      "platform": "aarch64-macos",
+      "runner": "macos-14",
+      "target": "aarch64-apple-darwin"
+    }
+  ]
+}
