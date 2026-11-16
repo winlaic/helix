@@ -18,6 +18,8 @@ permissions:
 jobs:
   plan:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write # Draft releases require repository push access.
     outputs:
       tag: ${{ steps.plan.outputs.tag }}
       source: ${{ steps.plan.outputs.source }}
@@ -34,6 +36,22 @@ jobs:
           "toolchain=$($Release.rust_toolchain)" >> $env:GITHUB_OUTPUT
           $Matrix = @{ include = @($Release.builds) } | ConvertTo-Json -Depth 5 -Compress
           "matrix=$Matrix" >> $env:GITHUB_OUTPUT
+      - name: Prepare verified draft inputs
+        id: inputs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          ./contrib/release/prepare.ps1
+          -ManifestPath ./contrib/release/release.json
+          -Repository '${{ github.repository }}'
+          -OutputPath ./inputs
+      - uses: actions/upload-artifact@v4
+        if: steps.inputs.outputs.has_inputs == 'true'
+        with:
+          name: native-build-inputs
+          path: inputs/*
+          if-no-files-found: error
 
   build:
     needs: plan
@@ -59,16 +77,19 @@ jobs:
         with:
           workspaces: source
           shared-key: fork-release-${{ matrix.platform }}
+      - uses: actions/download-artifact@v4
+        if: matrix.binary_asset != ''
+        with:
+          name: native-build-inputs
+          path: inputs
       - name: Build and package native release
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: >-
           ./automation/contrib/release/build.ps1
           -SourcePath ./source
           -ManifestPath ./automation/contrib/release/release.json
           -Platform '${{ matrix.platform }}'
-          -Repository '${{ github.repository }}'
+          -InputPath ./inputs
           -OutputPath ./dist
       - uses: actions/upload-artifact@v4
         with:

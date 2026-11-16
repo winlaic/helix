@@ -2,7 +2,7 @@ param(
     [Parameter(Mandatory)][string]$SourcePath,
     [Parameter(Mandatory)][string]$ManifestPath,
     [Parameter(Mandatory)][string]$Platform,
-    [Parameter(Mandatory)][string]$Repository,
+    [Parameter(Mandatory)][string]$InputPath,
     [Parameter(Mandatory)][string]$OutputPath
 )
 
@@ -33,8 +33,6 @@ Remove-Item Env:HELIX_DEFAULT_RUNTIME -ErrorAction SilentlyContinue
 Remove-Item Env:HELIX_DISABLE_AUTO_GRAMMAR_BUILD -ErrorAction SilentlyContinue
 $env:CARGO_TERM_COLOR = 'never'
 $env:CARGO_BUILD_JOBS = [string][Environment]::ProcessorCount
-$env:GH_PAGER = 'cat'
-$env:GH_PROMPT_DISABLED = '1'
 
 Push-Location $SourcePath
 try {
@@ -47,13 +45,8 @@ finally { Pop-Location }
 
 $BinaryPath = Join-Path $SourcePath "target/$($Build.target)/release/hx"
 if ($Build.PSObject.Properties.Name -contains 'binary_asset') {
-    Write-Host '[Release build] Using the previously verified binary from the draft release.'
-    $InputPath = Join-Path $OutputPath 'input'
-    New-Item -ItemType Directory -Path $InputPath -Force | Out-Null
-    $CommandArgs = @('release', 'download', $Release.tag, '--repo', $Repository)
-    $CommandArgs += @('--pattern', $Build.binary_asset, '--dir', $InputPath)
-    gh @CommandArgs
-    if ($LASTEXITCODE -ne 0) { throw "Downloading original binary failed: $LASTEXITCODE." }
+    Write-Host '[Release build] Using the verified original binary from workflow inputs.'
+    $InputPath = (Resolve-Path -LiteralPath $InputPath).Path
     $BinaryPath = Join-Path $InputPath $Build.binary_asset
     $Hash = (Get-FileHash -LiteralPath $BinaryPath -Algorithm SHA256).Hash
     if ($Hash -ne $Build.binary_sha256) { throw 'Original binary SHA256 does not match the manifest.' }
@@ -63,7 +56,4 @@ if ($Build.PSObject.Properties.Name -contains 'binary_asset') {
 
 & (Join-Path $PSScriptRoot 'package.ps1') -SourcePath $SourcePath -BinaryPath $BinaryPath `
     -Tag $Release.tag -Platform $Platform -OutputPath $OutputPath
-if ($Build.PSObject.Properties.Name -contains 'binary_asset') {
-    Remove-Item -LiteralPath $InputPath -Recurse
-}
 Write-Host "[Release build] Completed $Platform."
